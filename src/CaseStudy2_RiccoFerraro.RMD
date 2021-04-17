@@ -1,0 +1,392 @@
+---
+title: "DDS_CaseStudy2"
+author: "Ricco Ferraro"
+date: "4/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+# Libraries
+```{r}
+# install.packages("aplore3")
+# install.packages("randomForest")
+# install.packages("rpart")
+# install.packages("pheatmap")
+# install.packages("plotROC")
+# install.packages("MLeval")
+# install.packages("vcdExtra")
+# install.packages("plotROC")
+# install.packages("ResourceSelection")
+# install.packages("GGally")
+library(aplore3)
+library(corrgram)
+library(ggplot2)
+library(psych)
+library(magrittr)
+library(caret)
+library(tidyr)
+library(class)
+library(dplyr)
+library(plyr)
+library(tidyverse)
+library(plotly)
+library(ggthemes)
+library(scales)
+library(vcdExtra)
+library(pROC)
+library(MASS)
+library(tidyverse)
+library(car)
+library(randomForest)
+library(pheatmap)
+library(glmnet)
+library(rpart)
+library(car)
+library(plotROC)
+library(MLeval)
+library(ResourceSelection)
+library(GGally)
+library(tidyverse)
+library(magrittr)
+library(knitr)
+library(rmarkdown)
+library(DT)
+library(mice)
+library(VIM)
+library(psych)
+library (readr)
+library(dataMaid)
+```
+
+```{r}
+# Utility function 
+isEmpty <- function(column) {
+    is.na(column) | column == 0 | column == "" | column == " " | column == "NA" | column == "na" | column == "Na" | column == "nA" | column == "NaN" 
+}
+```
+
+Import the dataset
+```{r}
+CaseStudy2.data <-read.csv("../data/CaseStudy2-data.csv", header = TRUE, sep = ",", stringsAsFactors = TRUE)
+summary(CaseStudy2.data)
+```
+
+# 3. Assess the Data 
+## Cleanup Factors for anything that looks categorical in nature. 
+```{r}
+summary(CaseStudy2.data)
+head(CaseStudy2.data)
+CaseStudy2.data$PerformanceRating <- as.factor(CaseStudy2.data$PerformanceRating)
+CaseStudy2.data$RelationshipSatisfaction <- as.factor(CaseStudy2.data$RelationshipSatisfaction)
+CaseStudy2.data$StockOptionLevel <- as.factor(CaseStudy2.data$StockOptionLevel)
+CaseStudy2.data$TrainingTimesLastYear <- as.factor(CaseStudy2.data$TrainingTimesLastYear)
+CaseStudy2.data$EnvironmentSatisfaction <- as.factor(CaseStudy2.data$EnvironmentSatisfaction)
+CaseStudy2.data$WorkLifeBalance <- as.factor(CaseStudy2.data$WorkLifeBalance)
+CaseStudy2.data$Education <- as.factor(CaseStudy2.data$Education)
+CaseStudy2.data$PerformanceRating <- as.factor(CaseStudy2.data$PerformanceRating)
+CaseStudy2.data$RelationshipSatisfaction <- as.factor(CaseStudy2.data$RelationshipSatisfaction)
+CaseStudy2.data$StockOptionLevel <- as.factor(CaseStudy2.data$StockOptionLevel)
+CaseStudy2.data$TrainingTimesLastYear <- as.factor(CaseStudy2.data$TrainingTimesLastYear)
+CaseStudy2.data$EnvironmentSatisfaction <- as.factor(CaseStudy2.data$EnvironmentSatisfaction)
+CaseStudy2.data$JobInvolvement <- as.factor(CaseStudy2.data$JobInvolvement)
+CaseStudy2.data$JobSatisfaction <- as.factor(CaseStudy2.data$JobSatisfaction)
+CaseStudy2.data$JobLevel <- as.factor(CaseStudy2.data$JobLevel)
+
+```
+
+
+
+## Missing data - There is none
+```{r}
+# Plot missing data (there should be none)
+bdat_mice_clean <- aggr(CaseStudy2.data, col=c('navyblue','yellow'),
+                    numbers=TRUE, sortVars=TRUE,
+                    labels=names(CaseStudy2.data), cex.axis=.7,
+                    gap=3, ylab=c("Missing Data (distribution)","Missing Data (Pattern)"))
+
+```
+## DataCleanup
+```{r}
+CaseStudy2.data.NoIdOrUselessData <- CaseStudy2.data %>% dplyr::select(-c("ID", "EmployeeCount", "Over18", "StandardHours"))
+```
+## Test Splits
+```{r}
+set.seed(123)
+trainIndex <- createDataPartition(CaseStudy2.data.NoIdOrUselessData$Attrition, p = .85, list = FALSE, times = 1)
+CaseStudy2.dtrain <- CaseStudy2.data.NoIdOrUselessData[trainIndex,]
+CaseStudy2.dtest <- CaseStudy2.data.NoIdOrUselessData[-trainIndex,]
+```
+Note: We assume that this data does not need to be corrected for serial correlation/autocorrelation. In truth, there may be some serial correlation with employees that were hired later or hired earlier, or just in what year there was more atrition. There are many other possible confounding factors such as the economy that we will ignore for the sake of this analysis. 
+
+Utility Functions for Confusion Matrix With Custom threshold. 
+```{r}
+confusionMatrixForCustomThreshold <- function(model, data, threshold) {
+  probabilities <- predict(model, newdata = data, type = "prob")
+  preds2 <- factor(ifelse(probabilities$Yes < threshold, "No","Yes"), levels=c("No","Yes"))
+  CM.Train <- confusionMatrix(table(data$Attrition, preds2))
+  return(CM.Train)
+} 
+
+plotConfusionMatrixByThreshold <- function(model, data, testTitle) {
+  thresholdSequence <- seq(0, 1, by = 0.001)
+  confusionMatrices <- vector("double", length(thresholdSequence))
+  accuracy<-c()
+  sensitivities<-c()
+  specificities<-c()
+  i <- 1;
+  for(threshold in thresholdSequence) {
+    confusionMatrix <- confusionMatrixForCustomThreshold(model, data, threshold)
+    accuracy[[i]] <- unname(confusionMatrix$overall['Accuracy'])
+    sensitivities[[i]] <- unname(confusionMatrix$byClass['Specificity'])
+    specificities[[i]] <- unname(confusionMatrix$byClass['Sensitivity'])
+    i = i +1
+  }
+  confusionMatrix_df.reduced <- data.frame(accuracy=accuracy, sensitivities=sensitivities, specificities=specificities)
+  confusionMatrix_df.reduced
+  
+  plot(x=thresholdSequence, y=accuracy,lty=2,lwd=2,col="red", xlab="threshold", ylab="probability", main=testTitle)
+  lines(x=thresholdSequence, y=sensitivities,lty=2,lwd=2,col="green")
+  lines(x=thresholdSequence, y=specificities, lty=3,lwd=2,col="blue")
+  legend("bottomright", legend=c("Accuracy", "Sensitivity", "Specificity"),
+         col=c("red", "green", "blue"), lty=1:2, cex=0.8)
+}
+
+```
+
+# 3. EDA 
+```{r}
+head(CaseStudy2.data.NoIdOrUselessData)
+
+ggpairs(CaseStudy2.data.NoIdOrUselessData,columns=1:6,aes(colour=Attrition), legend =1, , progress = FALSE) 
+ggpairs(CaseStudy2.data.NoIdOrUselessData,columns=7:11,aes(colour=Attrition), legend =1, , progress = FALSE) 
+ggpairs(CaseStudy2.data.NoIdOrUselessData,columns=12:17,aes(colour=Attrition), legend =1, , progress = FALSE) 
+ggpairs(CaseStudy2.data.NoIdOrUselessData,columns=18:22,aes(colour=Attrition), legend =1, , progress = FALSE) 
+ggpairs(CaseStudy2.data.NoIdOrUselessData,columns=23:32,aes(colour=Attrition), legend =1, , progress = FALSE) 
+
+```
+
+
+## PCA
+```{r}
+head(CaseStudy2.data.NoIdOrUselessData)
+# PCA will only really work for numerical variables, select only numerical variables. 
+# Ignore Employee Count, it is always 1. Standard hours is ALWAYS 80. We can ignore that too. 
+reduced.numerical <- CaseStudy2.data.NoIdOrUselessData %>% dplyr::select(Age, DailyRate, DistanceFromHome, EmployeeNumber, HourlyRate, MonthlyIncome, MonthlyRate, NumCompaniesWorked, PercentSalaryHike, TotalWorkingYears, YearsAtCompany, YearsInCurrentRole, YearsSinceLastPromotion, YearsWithCurrManager)
+pc.result<-prcomp(reduced.numerical, center= TRUE, scale. = TRUE)
+summary(pc.result)
+pc.result
+pc.scores<-data.frame(pc.result$x)
+pc.scores$Attrition= as.factor(CaseStudy2.data$Attrition)
+
+
+plot_ly(x = pc.scores$PC1, y = pc.scores$PC2, z = pc.scores$PC3, type="scatter3d", mode="markers", color=pc.scores$Attrition)
+ggpairs(pc.scores,columns=1:5,aes(colour=Attrition), legend =1, , progress = FALSE) 
+```
+## Cluster and HeatMap
+```{r}
+pheatmap::pheatmap(data.matrix(CaseStudy2.data.NoIdOrUselessData), scale = "column")
+```
+## Multicolinearity
+``` {r}
+CaseStudy2.data.NoIdOrUselessData.Copy <- data.frame(CaseStudy2.data.NoIdOrUselessData)
+CaseStudy2.data.NoIdOrUselessData.Copy$AgeDummy <- CaseStudy2.data.NoIdOrUselessData.Copy$Age
+vif(lm(AgeDummy~., data=CaseStudy2.data.NoIdOrUselessData.Copy))
+```
+# Factor Analysis: 
+Variable Importance
+```{r}
+#Make sure to compare this to the results that we get from Random Forest 
+glimpse(CaseStudy2.data.NoIdOrUselessData)
+rf2 <- randomForest(Attrition~., data=CaseStudy2.data.NoIdOrUselessData)
+rf2$importance
+RFI2 <- as.data.frame(rf2$importance)
+colnames(RFI2) = c("Influence")
+RFI2 %>% slice_max(RFI2,n=30)
+```
+
+# Classification
+## Random Forest
+```{r}
+
+ctrl <- trainControl(method="cv", summaryFunction=twoClassSummary, classProbs=T, savePredictions = T, number = 5)
+fit2.HigherComplexity.Rf <- train(Attrition ~ ., data = CaseStudy2.dtrain, method = 'rf', trControl = ctrl, ntree = 200, metric = "ROC")
+
+fit2.HigherComplexity.Rf$metric
+fit2.HigherComplexity.Rf
+
+# Train Confusion Matrix
+plotConfusionMatrixByThreshold(fit2.HigherComplexity.Rf, CaseStudy2.dtrain, "Train Confusion Matrix Stats - Random Forest")
+threshold <- .5
+print("Train Confusion Matrix")
+print(paste("Threshold was:", threshold))
+confusionMatrixForCustomThreshold(fit2.HigherComplexity.Rf, CaseStudy2.dtrain, threshold)
+
+# Test Confusion Matrix
+plotConfusionMatrixByThreshold(fit2.HigherComplexity.Rf, CaseStudy2.dtest, "Test Confusion Matrix Stats - Random Forest")
+print("Test Confusion Matrix")
+print(paste("Threshold was:", threshold))
+confusionMatrixForCustomThreshold(fit2.HigherComplexity.Rf, CaseStudy2.dtest, threshold)
+
+summary(fit2.HigherComplexity.Rf$finalModel)
+
+# ROC Plot
+res <- evalm(fit2.HigherComplexity.Rf,gnames=c('Train'), title='ROC: RandomForest') 
+
+summary(fit2.HigherComplexity.Rf)
+varImp(fit2.HigherComplexity.Rf, scale = FALSE)
+```
+
+# Logistic Regression with LASSO for variable selection (AND prediction)
+```{r}
+## Logistic Regression: Fit Model - 
+ctrl <- trainControl(method="cv", summaryFunction=twoClassSummary, classProbs=T, savePredictions = T, number = 5, search="grid")
+fit2.HigherComplexity.Lasso <- train(Attrition ~ (.)^2 + I(Age^2) + I(DailyRate^2)+ I(DistanceFromHome^2)+ I(EmployeeNumber^2)+ I(HourlyRate^2)+ I(MonthlyIncome^2)+ I(MonthlyRate^2)+ I(NumCompaniesWorked^2)+ I(PercentSalaryHike^2) + I(TotalWorkingYears^2) + I(YearsAtCompany^2), data = CaseStudy2.dtrain, method = 'glmnet', trControl = ctrl, metric = "ROC", tuneGrid = data.frame(alpha = 1, lambda = 10^seq(-2, -1.75, by = 0.0001)))
+head(CaseStudy2.dtrain)
+
+fit2.HigherComplexity.Lasso$metric
+fit2.HigherComplexity.Lasso
+summary(fit2.HigherComplexity.Lasso)
+coefficients <- coef(fit2.HigherComplexity.Lasso$finalModel, fit2.HigherComplexity.Lasso$bestTune$lambda)
+coefficients@Dimnames[[1]][which(coefficients > .0001 |coefficients < -.0001 )]
+
+# Train Confusion Matrix
+plotConfusionMatrixByThreshold(fit2.HigherComplexity.Lasso, CaseStudy2.dtrain, "Train Confusion Matrix Stats - Lasso")
+threshold <- .5
+print("Train Confusion Matrix")
+print(paste("Threshold was:", threshold))
+confusionMatrixForCustomThreshold(fit2.HigherComplexity.Lasso, CaseStudy2.dtrain, threshold)
+
+# Test Confusion Matrix
+plotConfusionMatrixByThreshold(fit2.HigherComplexity.Lasso, CaseStudy2.dtest, "Test Confusion Matrix Stats - Lasso")
+print("Test Confusion Matrix")
+print(paste("Threshold was:", threshold))
+confusionMatrixForCustomThreshold(fit2.HigherComplexity.Lasso, CaseStudy2.dtest, threshold)
+
+
+# ROC Plot
+res <- evalm(fit2.HigherComplexity.Lasso,gnames=c('Train'), title='ROC: Logistic Regression-LASSO') 
+#Train 
+res <- evalm(fit2.HigherComplexity.Lasso,gnames=c('Train'), title='Train ROC: Logistic Regression-LASSO') 
+
+#Test 
+pred2 <- predict(fit2.HigherComplexity.Lasso, newdata = CaseStudy2.dtest, type="prob")
+test1 <- evalm(data.frame(pred2, CaseStudy2.dtest$Attrition),  title='Test ROC: Logistic Regression-LASSO')
+summary(fit2.HigherComplexity.Lasso)
+# hoslem.test(CaseStudy2.dtrain$fracture, fitted(fit2.HigherComplexity), g=10)
+
+
+#GLM with highest values from LASSO only
+fit2.HigherComplexity.Lasso.Custo <- train(Attrition ~ BusinessTravel*JobRole + BusinessTravel*JobSatisfaction + BusinessTravel*MaritalStatus + BusinessTravel*TrainingTimesLastYear + DailyRate*MaritalStatus + Department*TrainingTimesLastYear + DistanceFromHome*MaritalStatus + DistanceFromHome*OverTime + Education*EducationField + Education*JobRole + Education*NumCompaniesWorked + Education*OverTime + Education*WorkLifeBalance + Education*YearsSinceLastPromotion + EducationField*JobLevel + EducationField*JobRole + EducationField*JobRole + EducationField*JobRole + EducationField*JobRole + EducationField*JobSatisfaction + EducationField*MaritalStatus + EducationField*PerformanceRating + EducationField*RelationshipSatisfaction + EducationField*StockOptionLevel + EducationField*TrainingTimesLastYear + EducationField*WorkLifeBalance + EducationField*YearsSinceLastPromotion + EnvironmentSatisfaction*JobInvolvement + EnvironmentSatisfaction*JobRole + Gender*JobInvolvement + Gender*JobRole + Gender*NumCompaniesWorked + HourlyRate*MaritalStatus + HourlyRate*OverTime + JobInvolvement*TrainingTimesLastYear + JobLevel*RelationshipSatisfaction + JobRole*OverTime + JobRole*PerformanceRating + JobRole*RelationshipSatisfaction + JobRole*StockOptionLevel + JobRole*TrainingTimesLastYear + JobRole*WorkLifeBalance + JobRole*YearsSinceLastPromotion + JobSatisfaction*StockOptionLevel + JobSatisfaction*TrainingTimesLastYear + MaritalStatus*OverTime + MaritalStatus*PerformanceRating + MaritalStatus*RelationshipSatisfaction + MaritalStatus*YearsAtCompany + MaritalStatus*YearsSinceLastPromotion + NumCompaniesWorked*OverTime + NumCompaniesWorked*StockOptionLevel + NumCompaniesWorked*YearsSinceLastPromotion + PerformanceRating*WorkLifeBalance + RelationshipSatisfaction*TrainingTimesLastYear + StockOptionLevel*TrainingTimesLastYear + YearsAtCompany*YearsSinceLastPromotion, data = CaseStudy2.dtrain, method = 'glm', trControl = ctrl, metric = "ROC")
+head(CaseStudy2.dtrain)
+ 
+# Train Confusion Matrix
+print("Train Confusion Matrix - Custom")
+LRclassifications.train <- predict(fit2.HigherComplexity.Lasso.Custo, newdata = CaseStudy2.dtrain)
+CM.Train = confusionMatrix(table(CaseStudy2.dtrain$Attrition, LRclassifications.train))
+CM.Train
+
+# Test Confusion Matrix
+print("Test Confusion Matrix - Custom")
+LRclassifications.test <- predict(fit2.HigherComplexity.Lasso.Custo, newdata = CaseStudy2.dtest)
+CM.Test = confusionMatrix(table(CaseStudy2.dtest$Attrition, LRclassifications.test))
+CM.Test
+
+# Train Confusion Matrix
+plotConfusionMatrixByThreshold(fit2.HigherComplexity.Lasso, dtrain, "Train Confusion Matrix Stats - Logistic with Lasso - Custom")
+threshold <- .5
+print("Train Confusion Matrix")
+print(paste("Threshold was:", threshold))
+confusionMatrixForCustomThreshold(fit2.HigherComplexity.Lasso, dtrain, threshold)
+
+# Test Confusion Matrix
+plotConfusionMatrixByThreshold(fit2.HigherComplexity.Lasso, dtest, "Test Confusion Matrix Stats - Logistic with Lasso - Custom")
+print("Test Confusion Matrix")
+print(paste("Threshold was:", threshold))
+confusionMatrixForCustomThreshold(fit2.HigherComplexity.Lasso, dtest, threshold)
+
+# ROC Plot
+res <- evalm(fit2.HigherComplexity.Lasso.Custo,gnames=c('Train'), title='ROC: Logistic Regression-LASSO-Custom') 
+#Train 
+res <- evalm(fit2.HigherComplexity.Lasso.Custo,gnames=c('Train'), title='Train ROC: Logistic Regression-LASSO-Custom') 
+
+#Test 
+pred2 <- predict(fit2.HigherComplexity.Lasso.Custo, newdata = CaseStudy2.dtest, type="prob")
+test1 <- evalm(data.frame(pred2, CaseStudy2.dtest$Attrition),  title='Test ROC: Logistic Regression-LASSO')
+summary(fit2.HigherComplexity.Lasso.Custo)
+
+print("Results NOT GOOD for Test Data! Don't use this teqnique")
+
+
+varImp(fit2.HigherComplexity.Lasso, scale = FALSE) # Don't use these! The lasso regression does not perform well!
+
+```
+
+# Regression: 
+## GLM with Lasso
+```{r}
+ctrl <- trainControl(method="cv", number = 5, search="grid")
+fit2.HigherComplexity.Lasso.Regression <- train(MonthlyIncome ~ (.)^2 + I(Age^2) + I(DailyRate^2)+ I(DistanceFromHome^2)+ I(EmployeeNumber^2)+ I(HourlyRate^2)+ I(MonthlyIncome^2)+ I(MonthlyRate^2)+ I(NumCompaniesWorked^2)+ I(PercentSalaryHike^2) + I(TotalWorkingYears^2) + I(YearsAtCompany^2), data = CaseStudy2.dtrain, method = 'glmnet', trControl = ctrl, tuneGrid = data.frame(alpha =  1, lambda = 10^seq(-2, -1.75, by = 0.0001)))
+
+fit2.HigherComplexity.Lasso.Regression$metric
+coef(fit2.HigherComplexity.Lasso.Regression$finalModel)
+summary(fit2.HigherComplexity.Lasso.Regression)
+coefficients <- coef(fit2.HigherComplexity.Lasso.Regression$finalModel, fit2.HigherComplexity.Lasso.Regression$bestTune$lambda)
+coefficients
+
+train_prediction=predict(fit2.HigherComplexity.Lasso.Regression, CaseStudy2.dtrain)
+train_ASE<-mean((CaseStudy2.dtrain$MonthlyIncome-train_prediction)^2)
+print("Train RSME")
+(train_ASE)^0.5
+
+test_prediction=predict(fit2.HigherComplexity.Lasso.Regression, CaseStudy2.dtest)
+test_ASE<-mean((CaseStudy2.dtest$MonthlyIncome-test_prediction)^2)
+print("Test RSME")
+(test_ASE)^0.5
+
+#Test 
+pred2 <- predict(fit2.HigherComplexity.Lasso, newdata = CaseStudy2.dtest, type="prob")
+test1 <- evalm(data.frame(pred2, CaseStudy2.dtest$Attrition),  title='Test ROC: Logistic Regression-LASSO')
+summary(fit2.HigherComplexity.Lasso)
+# hoslem.test(CaseStudy2.dtrain$fracture, fitted(fit2.HigherComplexity), g=10)
+
+```
+
+## KNN
+```{r}
+reduced.numerical.train <- CaseStudy2.dtrain %>% dplyr::select(Age, DailyRate, DistanceFromHome, EmployeeNumber, HourlyRate, MonthlyIncome, MonthlyRate, NumCompaniesWorked, PercentSalaryHike, TotalWorkingYears, YearsAtCompany, YearsInCurrentRole, YearsSinceLastPromotion, YearsWithCurrManager)
+
+reduced.numerical.test <- CaseStudy2.dtest %>% dplyr::select(Age, DailyRate, DistanceFromHome, EmployeeNumber, HourlyRate, MonthlyIncome, MonthlyRate, NumCompaniesWorked, PercentSalaryHike, TotalWorkingYears, YearsAtCompany, YearsInCurrentRole, YearsSinceLastPromotion, YearsWithCurrManager)
+
+ctrl <- trainControl(method="repeatedcv",repeats = 5) 
+knnFit <- train(MonthlyIncome ~ ., data = reduced.numerical.train, method = "knn", trControl = ctrl, preProcess = c("center","scale"), tuneLength = 20)
+knnFit
+
+train_prediction=predict(knnFit, reduced.numerical.train)
+train_ASE<-mean((reduced.numerical.train$MonthlyIncome-train_prediction)^2)
+print("Train RSME")
+(train_ASE)^0.5
+
+test_prediction=predict(knnFit, reduced.numerical.test)
+test_ASE<-mean((reduced.numerical.test$MonthlyIncome-test_prediction)^2)
+print("Test RSME")
+(test_ASE)^0.5
+
+#Test 
+pred2 <- predict(fit2.HigherComplexity.Lasso, newdata = CaseStudy2.dtest, type="prob")
+test1 <- evalm(data.frame(pred2, CaseStudy2.dtest$Attrition),  title='Test ROC: Logistic Regression-LASSO')
+summary(fit2.HigherComplexity.Lasso)
+# hoslem.test(CaseStudy2.dtrain$fracture, fitted(fit2.HigherComplexity), g=10)
+
+
+Pint("RSME is BAD for KNN!!! USE Regression)
+```
+
