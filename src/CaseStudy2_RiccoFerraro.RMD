@@ -9,14 +9,18 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+#Youtube Presentation here: 
+https://youtu.be/DvKO9sucwJw
+
 # Introduction
 ## Restatment of problem
+We wish to analyze the top 3 or more factors which lead to Attrition, Predict Attrition, and Predict Monthly Income based on different attributes of employees. 
 
 ## The Data
-
+The dataset is comprised of over 870 employee records, some of whom no longer work at the company. Properties exist like Attrition, MonthlyIncome, Gender, etc. 
 
 # Libraries
-```{r echo=FALSE}
+```{r echo = FALSE}
 # install.packages("aplore3")
 # install.packages("randomForest")
 # install.packages("rpart")
@@ -352,6 +356,8 @@ summary(fit2.HigherComplexity.Lasso)
 ## GLM with Lasso. For prediction of Monthly Income use Multiple Linear Regression with Lasso L1-Regularization. Note that the RSME is well below the requirement (~$500). Although we can see some overfitting on the training set, the test prediction is still acceptably low. 
 ```{r}
 ctrl <- trainControl(method="cv", number = 5, search="grid")
+CaseStudy2.dtrain.lassoReg <- data.frame(CaseStudy2.dtrain)
+CaseStudy2.dtrain.lassoReg$MonthlyIncome <- 0
 fit2.HigherComplexity.Lasso.Regression <- train(MonthlyIncome ~ (.)^2 + I(Age^2) + I(DailyRate^2)+ I(DistanceFromHome^2)+ I(EmployeeNumber^2)+ I(HourlyRate^2)+ I(MonthlyIncome^2)+ I(MonthlyRate^2)+ I(NumCompaniesWorked^2)+ I(PercentSalaryHike^2) + I(TotalWorkingYears^2) + I(YearsAtCompany^2), data = CaseStudy2.dtrain, method = 'glmnet', trControl = ctrl, tuneGrid = data.frame(alpha =  1, lambda = 10^seq(-2, -1.75, by = 0.0001)))
 
 summary(fit2.HigherComplexity.Lasso.Regression)
@@ -368,6 +374,7 @@ print("Test RSME")
 (test_ASE)^0.5
 
 print("Use this method! RSME is acceptable!")
+
 ```
 
 ## KNN
@@ -392,4 +399,50 @@ print("Test RSME")
 
 print("RSME is BAD for KNN!!! DON'T USE Regression")
 ```
+Predicting Competition set
+```{r}
+CaseStudy2CompSet.No.Salary$MonthlyIncome <- 0
+CaseStudy2CompSet.No.Salary$PerformanceRating <- as.factor(CaseStudy2CompSet.No.Salary$PerformanceRating)
+CaseStudy2CompSet.No.Salary$RelationshipSatisfaction <- as.factor(CaseStudy2CompSet.No.Salary$RelationshipSatisfaction)
+CaseStudy2CompSet.No.Salary$StockOptionLevel <- as.factor(CaseStudy2CompSet.No.Salary$StockOptionLevel)
+CaseStudy2CompSet.No.Salary$TrainingTimesLastYear <- as.factor(CaseStudy2CompSet.No.Salary$TrainingTimesLastYear)
+CaseStudy2CompSet.No.Salary$EnvironmentSatisfaction <- as.factor(CaseStudy2CompSet.No.Salary$EnvironmentSatisfaction)
+CaseStudy2CompSet.No.Salary$WorkLifeBalance <- as.factor(CaseStudy2CompSet.No.Salary$WorkLifeBalance)
+CaseStudy2CompSet.No.Salary$Education <- as.factor(CaseStudy2CompSet.No.Salary$Education)
+CaseStudy2CompSet.No.Salary$PerformanceRating <- as.factor(CaseStudy2CompSet.No.Salary$PerformanceRating)
+CaseStudy2CompSet.No.Salary$RelationshipSatisfaction <- as.factor(CaseStudy2CompSet.No.Salary$RelationshipSatisfaction)
+CaseStudy2CompSet.No.Salary$StockOptionLevel <- as.factor(CaseStudy2CompSet.No.Salary$StockOptionLevel)
+CaseStudy2CompSet.No.Salary$TrainingTimesLastYear <- as.factor(CaseStudy2CompSet.No.Salary$TrainingTimesLastYear)
+CaseStudy2CompSet.No.Salary$EnvironmentSatisfaction <- as.factor(CaseStudy2CompSet.No.Salary$EnvironmentSatisfaction)
+CaseStudy2CompSet.No.Salary$JobInvolvement <- as.factor(CaseStudy2CompSet.No.Salary$JobInvolvement)
+CaseStudy2CompSet.No.Salary$JobSatisfaction <- as.factor(CaseStudy2CompSet.No.Salary$JobSatisfaction)
+CaseStudy2CompSet.No.Salary$JobLevel <- as.factor(CaseStudy2CompSet.No.Salary$JobLevel)
+competition_prediction <- predict(fit2.HigherComplexity.Lasso.Regression, CaseStudy2CompSet.No.Salary)
+output.salary <- data.frame( ID=CaseStudy2CompSet.No.Salary$ID, Attrition=competition_prediction)
+write.csv(output.salary, "Case2PredictionsFerraroSalary.csv")
 
+```
+
+```{r}
+CaseStudy2CompSet.No.Attrition$MonthlyIncome <- 0
+CaseStudy2CompSet.No.Attrition$PerformanceRating <- as.factor(CaseStudy2CompSet.No.Attrition$PerformanceRating)
+CaseStudy2CompSet.No.Attrition$RelationshipSatisfaction <- as.factor(CaseStudy2CompSet.No.Attrition$RelationshipSatisfaction)
+CaseStudy2CompSet.No.Attrition$StockOptionLevel <- as.factor(CaseStudy2CompSet.No.Attrition$StockOptionLevel)
+CaseStudy2CompSet.No.Attrition$TrainingTimesLastYear <- as.factor(CaseStudy2CompSet.No.Attrition$TrainingTimesLastYear)
+CaseStudy2CompSet.No.Attrition$EnvironmentSatisfaction <- as.factor(CaseStudy2CompSet.No.Attrition$EnvironmentSatisfaction)
+CaseStudy2CompSet.No.Attrition$WorkLifeBalance <- as.factor(CaseStudy2CompSet.No.Attrition$WorkLifeBalance)
+CaseStudy2CompSet.No.Attrition$Education <- as.factor(CaseStudy2CompSet.No.Attrition$Education)
+CaseStudy2CompSet.No.Attrition$PerformanceRating <- as.factor(CaseStudy2CompSet.No.Attrition$PerformanceRating)
+CaseStudy2CompSet.No.Attrition$RelationshipSatisfaction <- as.factor(CaseStudy2CompSet.No.Attrition$RelationshipSatisfaction)
+CaseStudy2CompSet.No.Attrition$StockOptionLevel <- as.factor(CaseStudy2CompSet.No.Attrition$StockOptionLevel)
+CaseStudy2CompSet.No.Attrition$TrainingTimesLastYear <- as.factor(CaseStudy2CompSet.No.Attrition$TrainingTimesLastYear)
+CaseStudy2CompSet.No.Attrition$EnvironmentSatisfaction <- as.factor(CaseStudy2CompSet.No.Attrition$EnvironmentSatisfaction)
+CaseStudy2CompSet.No.Attrition$JobInvolvement <- as.factor(CaseStudy2CompSet.No.Attrition$JobInvolvement)
+CaseStudy2CompSet.No.Attrition$JobSatisfaction <- as.factor(CaseStudy2CompSet.No.Attrition$JobSatisfaction)
+CaseStudy2CompSet.No.Attrition$JobLevel <- as.factor(CaseStudy2CompSet.No.Attrition$JobLevel)
+competition_prediction.prob <- predict(fit2.HigherComplexity.Rf, CaseStudy2CompSet.No.Attrition, type="prob")
+competition_prediction <- factor(ifelse(competition_prediction.prob$Yes >= threshold,"Yes", "No"), levels=c("Yes","No"))
+output.salary <- data.frame( ID=CaseStudy2CompSet.No.Attrition$ID, Attrition=competition_prediction)
+output.salary
+write.csv(output.salary, "Case2PredictionsFerraroAttrition.csv")
+```
